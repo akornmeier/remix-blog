@@ -2,10 +2,18 @@ import path from 'path';
 import fs from 'fs/promises';
 import parseFrontMatter from 'front-matter';
 import invariant from 'tiny-invariant';
+import slugify from '@sindresorhus/slugify';
+import { marked } from 'marked';
 
 export type Post = {
   slug: string;
   title: string;
+  html: string;
+};
+
+export type NewPost = {
+  title: string;
+  markdown: string;
 };
 
 export type PostMarkdownAttributes = {
@@ -14,10 +22,29 @@ export type PostMarkdownAttributes = {
 
 const postsPath = path.join(__dirname, '..', 'posts');
 
-function isValidMarkdownAttributes(
+function isValidPostAttributes(
   attributes: any
 ): attributes is PostMarkdownAttributes {
   return attributes?.title;
+}
+
+export async function createPost(post: NewPost) {
+  const slug = slugify(post.title);
+  const md = `---\ntitle: ${post.title}\n---\n\n${post.markdown}`;
+  await fs.writeFile(path.join(postsPath, slug + '.md'), md);
+  return getPost(slug);
+}
+
+export async function getPost(slug: string) {
+  const filepath = path.join(postsPath, slug + '.md');
+  const file = await fs.readFile(filepath);
+  const { attributes, body } = parseFrontMatter(file.toString());
+  invariant(
+    isValidPostAttributes(attributes),
+    `Post ${filepath} is missing attributes`
+  );
+  const html = marked(body);
+  return { slug, html, title: attributes.title };
 }
 
 export const getPosts = async () => {
@@ -28,7 +55,7 @@ export const getPosts = async () => {
       const file = await fs.readFile(path.join(postsPath, filename));
       const { attributes } = parseFrontMatter(file.toString());
       invariant(
-        isValidMarkdownAttributes(attributes),
+        isValidPostAttributes(attributes),
         `${filename} has bad meta data!`
       );
       return {
